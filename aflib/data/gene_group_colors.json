@@ -1,0 +1,9 @@
+{
+  "Nuclear pore complex": "#0d365e",
+  "Germ cell granules": "#d59447",
+  "Germ cell markers": "#687a3e",
+  "Cytoskeleton": "#3e6c54",
+  "Nucleus": "#f8a280",
+  "Transcription factors": "#fcb7bd",
+  "UNUSED": ["#faccfa", "#1d5660"]
+}

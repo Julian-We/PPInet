@@ -1,0 +1,11 @@
+{
+  "Nuclear pore complex": [
+    "aaas", "gle1", "ndc1", "nup35", "nup37", "nup42", "nup43", "nup50", "nup54", "nup58", "nup62l", "nup85", "nup88", "nup93", "nup98", "nup107", "nup133", "nup153", "nup160", "nup188", "nup205", "nup210", "nup214", "nup358", "pom121", "rae1", "sec13", "seh1l", "tpra", "tprb"
+  ],
+  "Germ cell granules": ["dnd1", "nanos3", "piwil1", "buc", "gra", "ddx4", "tdrd7a", "tdrd6", "tia1", "dazl", "dazap1", "dynll2a", "hook2", "ranbp9"],
+  "Germ cell markers": ["cxcr4b", "cxcl12a"],
+  "Cytoskeleton": ["actb1"],
+  "Nucleus": ["h2bc1"],
+  "Transcription factors": ["pou5f3"],
+  "Nuclear import/export": ["ran", "ranbp", "ranbp1", "ranbp9", "ranbp3a", "ranbp3b", "rangap1a", "rangap1b", "rcc1", "kpna1", "kpna2", "kpna3", "kpna4", "kpna5", "kpna6", "kpna7", "kpna8", "kpna9", "kpnb1", "kpnb3", "xpo1a", "xpo4", "xpo5", "xpo7"]
+}
