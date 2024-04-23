@@ -3,6 +3,7 @@ import os
 import json
 from aflib.docking import compute_docking_quality
 import aflib.data as data
+from aflib.basebuilder import update_db
 import plotly.express as px
 import seaborn as sns
 from itertools import combinations
@@ -13,6 +14,8 @@ from pycirclize import Circos
 from pycirclize.parser import Matrix
 import pickle
 
+
+
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 with open(os.path.join(dir_path, "data", "DICT_GENES.pkl"), 'rb') as in_jsn_fle:
@@ -20,6 +23,11 @@ with open(os.path.join(dir_path, "data", "DICT_GENES.pkl"), 'rb') as in_jsn_fle:
     DICT_GENES = pickle.load(in_jsn_fle)
     if type(DICT_GENES) == type(dict):
         raise TypeError(f'DICT_GENES does not have the right type. Instead it has type {type(DICT_GENES)}')
+
+
+def get_database(db_path):
+    update_db(db_path, pickle_db=True)
+    return pd.read_pickle(db_path)
 
 
 class CombinationPrediction:
@@ -53,6 +61,7 @@ class CombinationPrediction:
                 highest_rank_pdockq = pdockq_score
                 highest_iptm_score = scores['iptm']
                 highest_ptm_score = scores['ptm']
+                avg_plddt = scores['avg plddt']
 
         average_pdockq = sum(pdockq_scores) / len(pdockq_scores)
         ranked_average = sum(pdock_facs) / sum(model_ranks)
@@ -71,6 +80,7 @@ class CombinationPrediction:
             "Chain A length": len(self.seqA),
             "Chain B sequence": self.seqB,
             "Chain B length": len(self.seqB),
+            "Average pLDDT": avg_plddt,
         }
 
         with open(os.path.join(self.path, 'docking_results.json'), 'w') as json_file:
@@ -89,6 +99,7 @@ class CombinationPrediction:
             "Chain A length": len(self.seqA),
             "Chain B sequence": self.seqB,
             "Chain B length": len(self.seqB),
+            "Average pLDDT": avg_plddt
         }
 
 
@@ -100,6 +111,10 @@ def helper_generate(path):
         print(f'The combination of the following sequences {os.path.basename(path)} have not been able to be processed'
               f' to the the following error')
         print(fileerr)
+    except pickle.UnpicklingError as pickleerr:
+        print(f'The combination of the following sequences {os.path.basename(path)} have not been able to be processed'
+              f' to the the following error')
+        print(pickleerr)
 
 
 def load_library_aslist(lib_path):
@@ -203,16 +218,40 @@ with open(os.path.join(pyfile_path, "data", "gene_groups.json"), "r") as read_fi
 
 
 class Interactions:
-    def __init__(self, path):
+    def __init__(self, *args, mode=None, **kwargs):
         """
         Class to analyse the output of AF2 on PALMA
+        :param mode: Select from a sereies of modes to analyse the output. If none assumptions are made
+
+        'screen': Input one gene as a string. Searches the entire library for interactions with that gene. Additionally,
+        if a list is given, the function will search for all interactions between the genes in the list.
+        'network': Input one list of genes. Searches the entire library for interactions between the genes in the list.
+        'reload': Input a single path. Reloads the library from the path.
         :param path: path to directory containing the output-folder from AF2 on PALMA
         """
-        self.path = path
+        self.mode = mode
+        self.path = None
         self.unique_df = None
         self.library_list = None
+        if mode is None:
+            if len(args) == 1 and os.path.isdir(args[0]):
+                self.path = args[0]
+                self.mode = 'reload'
+            elif len(args) == 1 and not os.path.isdir(args[0]):
+                mode = 'screen'
+            elif len(args) == 1 and isinstance(args[0], list):
+                mode = 'network'
+            elif len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], list):
+                mode = 'screen'
+            else:
+                raise ValueError('No valid input given. Please provide a mode of operation: screen, network or reload')
 
-        self.both_ways()
+        if mode == 'reload':
+            self.both_ways()
+        elif mode == 'screen':
+            self.screen(*args, **kwargs)
+        elif mode == 'network':
+            self.network(*args, **kwargs)
 
     def both_ways(self):
         """
@@ -226,6 +265,44 @@ class Interactions:
         self.library_list = res
         unique_df.dropna(subset=['Mean pDockQ', 'pTM', 'ipTM'], inplace=True, ignore_index=True)
         self.unique_df = unique_df
+
+    def network(self, gene_list, db_path=None):
+        if db_path is None:
+            raise ValueError('No database path given. Use db_path=... to specify the path to the database')
+        df = get_database(db_path)
+        self.unique_df = df[(df['Gene A'].isin(gene_list) & df['Gene B'].isin(gene_list))]
+
+        # Check if all possible combinations are present in unique_df
+        for x, y in combinations(gene_list, 2):
+            present = False
+            if ((self.unique_df['Gene A'] == x) & (self.unique_df['Gene B'] == y)).any():
+                continue
+            elif ((self.unique_df['Gene A'] == y) & (self.unique_df['Gene B'] == x)).any():
+                continue
+            else:
+                print(f'No interaction found between {y} and {x}')
+
+    def screen(self, *args, db_path=None, **kwargs):
+        if db_path is None:
+            raise ValueError('No database path given. Use db_path=... to specify the path to the database')
+        df = get_database(db_path)
+        if len(args) == 1:
+            gene = args[0]
+            if isinstance(gene, str):
+                self.unique_df = df[df['Gene A'].str.contains(gene) | df['Gene B'].str.contains(gene)]
+            else:
+                raise ValueError('Gene must be a string')
+        elif len(args) == 2:
+            gene = args[0]
+            candidate_genes = args[1]
+            if isinstance(gene, str) and isinstance(candidate_genes, list):
+                self.unique_df = df[(df['Gene A'].str.contains(gene) & df['Gene B'].isin(candidate_genes)) |
+                                    (df['Gene B'].str.contains(gene) & df['Gene A'].isin(candidate_genes))]
+            else:
+                raise ValueError('Gene must be a string and candidate_genes must be a list')
+        else:
+            raise ValueError('No valid input given. Please provide a gene as a string '
+                             'or a gene and a list of candidate genes')
 
     def pTM_plot(self, axis, experiment_name="Experiment", **kwargs):
         """
@@ -274,9 +351,13 @@ class Interactions:
         fig.show()
 
     def matrix_plot(self, axis, parameter):
-        df_pivoted = pd.DataFrame(self.library_list).pivot(index="Chain A",
-                                                           columns="Chain B",
-                                                           values=parameter).astype('float')
+        try:
+            df_pivoted = pd.DataFrame(self.library_list).pivot(index="Chain A",
+                                                               columns="Chain B",
+                                                               values=parameter).astype('float')
+        except KeyError as keyerr:
+            print(f'KeyError: {keyerr}')
+            df_pivoted = self.unique_df.pivot_table(index="Chain A", columns="Chain B", values=parameter).astype('float')
         sns.heatmap(df_pivoted, annot=True, ax=axis)
         axis.set_xlabel('Chain B – second entry')
         axis.set_ylabel('Chain A – first entry')

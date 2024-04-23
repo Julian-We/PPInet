@@ -137,6 +137,7 @@ def compute_docking_quality(pdb_file, pickle_file):
     plddt = pickle_data['plddt']
     ptm = pickle_data['ptm']
     iptm = pickle_data['iptm']
+    avgplddt = np.mean(pickle_data['plddt'])
 
 
     # Calculate pdockq
@@ -147,7 +148,8 @@ def compute_docking_quality(pdb_file, pickle_file):
         'pdockq': pdockq,
         'plddt': plddt,
         'ptm': ptm,
-        'iptm': iptm
+        'iptm': iptm,
+        'avg plddt': avgplddt,
     }
 
 #################MAIN####################

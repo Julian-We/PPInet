@@ -87,10 +87,11 @@ def get_added_df(changes, library_path):
     return unique_df
 
 
-def update_db(library_path):
+def update_db(library_path, pickle_db=True):
     # Identify the changes in the database
     changes = analyze_db(library_path)
     df_toadd = get_added_df(changes, library_path)
+
 
     # Load current database
     if not os.path.exists(os.path.join(library_path, 'PPIDB_full.db')):
@@ -98,8 +99,10 @@ def update_db(library_path):
         cnx = sqlite3.connect(os.path.join(library_path, 'PPIDB_full.db'))
 
     try:
-        df_in = pd.read_sql('AF2 full-lib', f"sqlite:///{os.path.join(library_path, 'PPIDB_full.db')}")
-        print(df_in['Job name'].head())
+        if pickle_db:
+            df_in = pd.read_pickle(os.path.join(library_path, 'PPIDB_full.pkl'))
+        else:
+            df_in = pd.read_sql('AF2 full-lib', f"sqlite:///{os.path.join(library_path, 'PPIDB_full.db')}")
 
         # Remove the entries that were removed from the database
         for rem_path in changes['removed']:
@@ -108,14 +111,17 @@ def update_db(library_path):
             index = df_in[
                 df_in['Job name'].str.contains(components[0]) & df_in['Job name'].str.contains(components[1])].index
             df_in.drop(index, inplace=True)
-    except Exception:
+    except Exception as _:
         print('Database not found – considering it do be empty')
         df_in = pd.DataFrame()
 
     # Add the new entries
     df = pd.concat([df_in, df_toadd], ignore_index=True)
-    print(df['Job name'].head())
+    # print(df['Job name'].head())
 
     # Save and replace current database with updated one
-    cnx = sqlite3.connect(os.path.join(library_path, 'PPIDB_full.db'))
-    df.to_sql(name='AF2 full-lib', con=cnx, if_exists='replace', index=False)
+    if pickle_db:
+        df.to_pickle(os.path.join(library_path, 'PPIDB_full.pkl'))
+    else:
+        cnx = sqlite3.connect(os.path.join(library_path, 'PPIDB_full.db'))
+        df.to_sql(name='AF2 full-lib', con=cnx, if_exists='replace', index=False)
