@@ -27,7 +27,7 @@ with open(os.path.join(dir_path, "data", "DICT_GENES.pkl"), 'rb') as in_jsn_fle:
 
 def get_database(db_path):
     update_db(db_path, pickle_db=True)
-    return pd.read_pickle(db_path)
+    return pd.read_pickle(os.path.join(db_path, 'PPIDB_full.pkl'))
 
 
 class CombinationPrediction:
@@ -264,6 +264,7 @@ class Interactions:
 
         self.library_list = res
         unique_df.dropna(subset=['Mean pDockQ', 'pTM', 'ipTM'], inplace=True, ignore_index=True)
+        # unique_df.drop_duplicates(inplace=True, ignore_index=True)
         self.unique_df = unique_df
 
     def network(self, gene_list, db_path=None):
@@ -271,6 +272,7 @@ class Interactions:
             raise ValueError('No database path given. Use db_path=... to specify the path to the database')
         df = get_database(db_path)
         self.unique_df = df[(df['Gene A'].isin(gene_list) & df['Gene B'].isin(gene_list))]
+        # self.unique_df.drop_duplicates(inplace=True, ignore_index=True)
 
         # Check if all possible combinations are present in unique_df
         for x, y in combinations(gene_list, 2):
@@ -300,6 +302,7 @@ class Interactions:
                                     (df['Gene B'].str.contains(gene) & df['Gene A'].isin(candidate_genes))]
             else:
                 raise ValueError('Gene must be a string and candidate_genes must be a list')
+            self.unique_df.drop_duplicates(inplace=True, ignore_index=True)
         else:
             raise ValueError('No valid input given. Please provide a gene as a string '
                              'or a gene and a list of candidate genes')
@@ -362,10 +365,10 @@ class Interactions:
         axis.set_xlabel('Chain B – second entry')
         axis.set_ylabel('Chain A – first entry')
 
-    def plot_networkx(self, axis, cmap_pTM='gray_r'):
+    def plot_networkx(self, axis, cmap_pTM='gray_r', connection_thick = 40):
         g = nx.from_pandas_edgelist(self.unique_df, source='Chain A', target='Chain B',
                                     edge_attr=['pTM', 'ipTM'])
-        wlabels = [i['ipTM'] * 10 for i in dict(g.edges).values()]
+        wlabels = [i['ipTM'] * connection_thick for i in dict(g.edges).values()]
         wcolor = [i['pTM'] for i in dict(g.edges).values()]
         nx.draw_circular(g,
                          ax=axis,
@@ -391,4 +394,4 @@ class Interactions:
         )
 
         circos.savefig(os.path.join(output_path, "circular_relationships.png"))
-        circos.savefig(os.path.join(output_path, "circular_relationships.pdf"))
+        # circos.savefig(os.path.join(output_path,

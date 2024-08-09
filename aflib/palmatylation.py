@@ -1,3 +1,4 @@
+import numpy as np
 from Bio import SeqIO
 from Bio.Seq import Seq
 import re
@@ -343,10 +344,13 @@ def af_computetime(len_seq):
 
             msa_prediction = 4.2 * len_seq
 
+            pred_time_min = (-300*np.exp(-0.006 * len_seq)) + (0.24 * len_seq) + 300
+            pred_time_sec = pred_time_min * 60
+
             # msa_prediction = 20 * len_seq + (2*10**-5 * len_seq**2)
             # predicted time +10%  tolerance
-            return (len_prediction + msa_prediction) * 1.1
-
+            # return (len_prediction + msa_prediction) * 1.1
+            return pred_time_sec
     return 0
 
 

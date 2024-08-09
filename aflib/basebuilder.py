@@ -1,4 +1,4 @@
-from aflib.decipher import load_library_aslist, uniquify
+import aflib.decipher as decipher
 import sqlite3
 import os
 import pickle
@@ -77,8 +77,8 @@ def get_added_df(changes, library_path):
     if not reloadable_paths:
         return pd.DataFrame()
     # Load the library
-    res = load_library_aslist(reloadable_paths)
-    unique_df = uniquify(pd.DataFrame(res))
+    res = decipher.load_library_aslist(reloadable_paths)
+    unique_df = decipher.uniquify(pd.DataFrame(res))
     # Remove rows with missing values
     unique_df.dropna(subset=['Mean pDockQ', 'pTM', 'ipTM'], inplace=True, ignore_index=True)
     # Remove the path prefix
@@ -91,7 +91,6 @@ def update_db(library_path, pickle_db=True):
     # Identify the changes in the database
     changes = analyze_db(library_path)
     df_toadd = get_added_df(changes, library_path)
-
 
     # Load current database
     if not os.path.exists(os.path.join(library_path, 'PPIDB_full.db')):
