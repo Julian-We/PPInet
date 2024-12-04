@@ -344,7 +344,8 @@ def af_computetime(len_seq):
 
             msa_prediction = 4.2 * len_seq
 
-            pred_time_min = (-300*np.exp(-0.006 * len_seq)) + (0.24 * len_seq) + 300
+            # pred_time_min = (-300*np.exp(-0.006 * len_seq)) + (0.24 * len_seq) + 300
+            pred_time_min = (-300*np.exp(-0.006 * len_seq)) + (0.4 * len_seq) + 320
             pred_time_sec = pred_time_min * 60
 
             # msa_prediction = 20 * len_seq + (2*10**-5 * len_seq**2)
@@ -402,7 +403,8 @@ def af_statistics(seq_dict, buffer_temp=0.12, **kwargs):
     return [seconds_to_hms(total_runtime), total_runtime, total_legnth]
 
 
-def create_bash_script(experiment_name, comb_name, run_time, path, partition="gpua100", user="jwegner1@uni-muenster.de",
+# THIS IS THE OG create_bash_script FUNCTION
+def create_bash_script(experiment_name, comb_name, run_time, path, partition="gpu2080", user="jwegner1@uni-muenster.de",
                        nodes=1, cores=10, gres=1, memory=60, precomputed_msas=False, database='full_dbs'):
     """
 
@@ -452,6 +454,10 @@ def create_bash_script(experiment_name, comb_name, run_time, path, partition="gp
     #                      "    --db_preset=reduced_dbs \\n",
     #                      "    --data_dir=/Applic.HPC/data/alphafold\n"
     #                      ]
+
+
+
+
     bash_script_text = f"""#!/bin/bash
 #SBATCH --partition={partition}
 #SBATCH --nodes={nodes}
@@ -464,11 +470,12 @@ def create_bash_script(experiment_name, comb_name, run_time, path, partition="gp
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user={user}
 
-module load palma/2021a
-module load foss/2021a
-module load AlphaFold/2.1.2
+module load palma/2022a
+module load GCC/11.3.0
+module load OpenMPI/4.1.4
+module load AlphaFold/2.3.1-CUDA-11.7.0
 wait
-export ALPHAFOLD_DATA_DIR=/Applic.HPC/data/alphafold
+export ALPHAFOLD_DATA_DIR=/Applic.HPC/data/alphafold-2.3.0
 
 alphafold \\
     --fasta_paths=/scratch/tmp/jwegner1/{experiment_name}/fasta/{comb_name}.fasta \\
@@ -476,15 +483,16 @@ alphafold \\
     --output_dir=/scratch/tmp/jwegner1/{experiment_name}/xprt \\
     --max_template_date=2021-11-25 \\
     --use_precomputed_msas={pre_msas} \\
-    --is_prokaryote_list=false \\
+    --num_multimer_predictions_per_model=3 \\
     --db_preset={database} \\
-    --data_dir=/Applic.HPC/data/alphafold
+    --data_dir=/Applic.HPC/data/alphafold-2.3.0
 """
 
     with open(os.path.join(path, f'{job_name}.sh'), 'w+') as bsh:
         # bsh.writelines(bash_script_lines)
         bsh.write(bash_script_text)
     return os.path.join(f'/scratch/tmp/jwegner1/{experiment_name}/bash_scripts/', f'{job_name}.sh')
+
 
 
 def export_fastas(pre_fasta_dict, output_directory, time_buffer_factor=1.5, t_min=6000, **kwargs):
@@ -553,7 +561,7 @@ def export_fastas(pre_fasta_dict, output_directory, time_buffer_factor=1.5, t_mi
 
 
 def some_vs_some(output_directory: str, genes_group1: list, genes_group2: list, only_canonical: bool,
-                 both_ways=False,
+                 both_ways=False, db_path=None,
                  **kwargs):
     """
     Generate fasta files to feed into alphafold 2.
@@ -568,11 +576,30 @@ def some_vs_some(output_directory: str, genes_group1: list, genes_group2: list, 
     clean_gene_group1 = searchengine_master(genes_group1, only_canonical)
     clean_gene_group2 = searchengine_master(genes_group2, only_canonical)
 
+    if db_path is not None:
+        with open(os.path.join(db_path, 'PPIDB_full.pkl'), 'rb') as db_fle:
+            df = pickle.load(db_fle)
+
+
     # For each gene in this list generate all interacting
     pre_fasta_dict = {}
     for gene1 in clean_gene_group1:
         # print('tick')
-        combination_list = list(map(target_system, clean_gene_group2, len(clean_gene_group2) * [gene1]))
+        if db_path is not None:
+            exclusion_list = []
+            screen_gene = gene1
+            for candidate in genes_group2:
+                for combination in df['Relative Directory']:
+                    combination = combination.split('/')[-1]
+                    if candidate in combination and screen_gene in combination and candidate != screen_gene:
+                        print(f'Excluding combination: {candidate}-{screen_gene}')
+                        exclusion_list.append(candidate)
+
+            superclean_gene_group2 = [gene for gene in clean_gene_group2 if gene not in exclusion_list]
+        else:
+            superclean_gene_group2 = clean_gene_group2
+
+        combination_list = list(map(target_system, superclean_gene_group2, len(superclean_gene_group2) * [gene1]))
         for combi_dict in combination_list:
             pre_fasta_dict.update(combi_dict)
     if both_ways:

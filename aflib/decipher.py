@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 from pycirclize import Circos
 from pycirclize.parser import Matrix
 import pickle
-
-
+from aflib.interaction_map import get_distance_map
+from multiprocessing import Pool
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -66,6 +66,10 @@ class CombinationPrediction:
         average_pdockq = sum(pdockq_scores) / len(pdockq_scores)
         ranked_average = sum(pdock_facs) / sum(model_ranks)
 
+        distance_out = get_distance_map(
+            os.path.join(self.path, f'relaxed_{rank}.pdb'),
+            plddt_path=os.path.join(self.path, f'result_{rank}.pkl'))
+
         dict_out = {
             "Job name": os.path.basename(self.path),
             "Directory": self.path,
@@ -81,6 +85,8 @@ class CombinationPrediction:
             "Chain B sequence": self.seqB,
             "Chain B length": len(self.seqB),
             "Average pLDDT": avg_plddt,
+            "Distance map": distance_out[0].tolist(),
+            "pLDDT map": distance_out[1].tolist()
         }
 
         with open(os.path.join(self.path, 'docking_results.json'), 'w') as json_file:
@@ -126,7 +132,9 @@ def load_library_aslist(lib_path):
     else:
         raise ValueError('lib_path must be a string or a list of strings')
 
-    none_list_results = list(tqdm(map(helper_generate, list_exp_path), total=len(list_exp_path)))
+    # Multiprocessing
+    with Pool() as p:
+        none_list_results = list(tqdm(p.imap(helper_generate, list_exp_path), total=len(list_exp_path)))
 
     # Clean none_list_results from None values where helper function failed
     list_results = [result for result in none_list_results if result is not None]
@@ -302,6 +310,7 @@ class Interactions:
                                     (df['Gene B'].str.contains(gene) & df['Gene A'].isin(candidate_genes))]
             else:
                 raise ValueError('Gene must be a string and candidate_genes must be a list')
+            print(self.unique_df)
             self.unique_df.drop_duplicates(inplace=True, ignore_index=True)
         else:
             raise ValueError('No valid input given. Please provide a gene as a string '
@@ -360,12 +369,13 @@ class Interactions:
                                                                values=parameter).astype('float')
         except KeyError as keyerr:
             print(f'KeyError: {keyerr}')
-            df_pivoted = self.unique_df.pivot_table(index="Chain A", columns="Chain B", values=parameter).astype('float')
+            df_pivoted = self.unique_df.pivot_table(index="Chain A", columns="Chain B", values=parameter).astype(
+                'float')
         sns.heatmap(df_pivoted, annot=True, ax=axis)
         axis.set_xlabel('Chain B – second entry')
         axis.set_ylabel('Chain A – first entry')
 
-    def plot_networkx(self, axis, cmap_pTM='gray_r', connection_thick = 40):
+    def plot_networkx(self, axis, cmap_pTM='gray_r', connection_thick=40):
         g = nx.from_pandas_edgelist(self.unique_df, source='Chain A', target='Chain B',
                                     edge_attr=['pTM', 'ipTM'])
         wlabels = [i['ipTM'] * connection_thick for i in dict(g.edges).values()]
@@ -395,3 +405,6 @@ class Interactions:
 
         circos.savefig(os.path.join(output_path, "circular_relationships.png"))
         # circos.savefig(os.path.join(output_path,
+
+    def plot_distance_maps(self):
+        pass
