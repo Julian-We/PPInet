@@ -1,5 +1,6 @@
 import numpy as np
 from Bio import SeqIO
+from aflib import basebuilder
 from Bio.Seq import Seq
 import re
 import os
@@ -345,7 +346,9 @@ def af_computetime(len_seq):
             msa_prediction = 4.2 * len_seq
 
             # pred_time_min = (-300*np.exp(-0.006 * len_seq)) + (0.24 * len_seq) + 300
-            pred_time_min = (-300*np.exp(-0.006 * len_seq)) + (0.4 * len_seq) + 320
+            # pred_time_min = (-300*np.exp(-0.006 * len_seq)) + (0.4 * len_seq) + 320
+            pred_time_min = 0.01 * len_seq ** 1.625 + 200
+            pred_time_min = 10000 if pred_time_min > 10000 else pred_time_min
             pred_time_sec = pred_time_min * 60
 
             # msa_prediction = 20 * len_seq + (2*10**-5 * len_seq**2)
@@ -356,6 +359,13 @@ def af_computetime(len_seq):
 
 
 def target_system(target_gene, missile_gene, separation='entry'):
+    """
+    Function to generate a fasta file for a target and missile gene
+    :param target_gene: One part of a pairwise prediction
+    :param missile_gene:
+    :param separation:
+    :return:
+    """
     try:
         missile_sequence = str(DICT_GENES.get(missile_gene).seq)
         target_sequence = str(DICT_GENES.get(target_gene).seq)
@@ -375,7 +385,7 @@ def seconds_to_hms(secs):
     return "{:02d}:{:02d}:{:02d}".format(int(hours), int(minutes), int(seconds))
 
 
-def af_statistics(seq_dict, buffer_temp=0.12, **kwargs):
+def af_statistics(seq_dict, buffer_temp=0.075, **kwargs):
     """
     :param seq_dict:
     :param buffer_temp:
@@ -571,16 +581,24 @@ def some_vs_some(output_directory: str, genes_group1: list, genes_group2: list, 
     :param genes_group1:
     :param genes_group2:
     :param seq_mode:
+    :param db_path: Path to the library
     :return:
     """
     clean_gene_group1 = searchengine_master(genes_group1, only_canonical)
     clean_gene_group2 = searchengine_master(genes_group2, only_canonical)
 
     if db_path is not None:
-        with open(os.path.join(db_path, 'PPIDB_full.pkl'), 'rb') as db_fle:
-            df = pickle.load(db_fle)
-
-
+        if db_path.endswith('.db'):
+            df = basebuilder.get_table_asdf(db_path, 'AF2DB_DETAILED')
+            root = os.path.dirname(db_path) + os.path.sep
+        else:
+            df = basebuilder.get_table_asdf(os.path.join(db_path, 'af2db.db'), 'AF2DB_DETAILED')
+            root = db_path + os.path.sep
+        # with open(os.path.join(db_path, 'PPIDB_full.pkl'), 'rb') as db_fle:
+        #     df = pickle.load(db_fle)
+    else:
+        raise ValueError('No database path provided')
+    df['Relative Directory'] = df['Directory'].apply(lambda x: x.replace(root, ''))
     # For each gene in this list generate all interacting
     pre_fasta_dict = {}
     for gene1 in clean_gene_group1:

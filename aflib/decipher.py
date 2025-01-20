@@ -1,12 +1,13 @@
 import pandas as pd
 import os
 import json
+from itertools import combinations_with_replacement
 from aflib.docking import compute_docking_quality
 import aflib.data as data
-from aflib.basebuilder import update_db
+# from aflib.basebuilder import update_db
 import plotly.express as px
 import seaborn as sns
-from itertools import combinations
+import numpy as np
 from tqdm import tqdm
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -25,43 +26,87 @@ with open(os.path.join(dir_path, "data", "DICT_GENES.pkl"), 'rb') as in_jsn_fle:
         raise TypeError(f'DICT_GENES does not have the right type. Instead it has type {type(DICT_GENES)}')
 
 
+# def get_database(db_path):
+#     update_db(db_path, pickle_db=True)
+#     return pd.read_pickle(os.path.join(db_path, 'PPIDB_full.pkl'))
+
 def get_database(db_path):
-    update_db(db_path, pickle_db=True)
-    return pd.read_pickle(os.path.join(db_path, 'PPIDB_full.pkl'))
+    return pd.read_sql_table('AF2DB_SUMMARY', os.path.join(db_path, 'af2db.db'))
+
+
+def generate_uid(library_path='/Volumes/terry/PPIDB/libs/full_lib', **kwargs):
+    file_path = os.path.join(library_path, 'uid_counter.txt')
+    file_exists = os.path.exists(file_path)
+
+    if not file_exists:
+        print(f'aflib.decipher.generate_uid: No file found, creating new file. If "{library_path}" is not the correct '
+              f'path, please specify'
+              f'path using the library_path argument')
+        all_uids = []
+    else:
+        with open(file_path, 'r') as f:
+            all_uids = f.read().splitlines()
+
+    is_unique = False
+
+    while not is_unique:
+        ten_uid = hex(np.random.randint(0, 2 ** 63))[2:]
+        if ten_uid not in all_uids:
+            is_unique = True
+            with open(file_path, 'a') as f:
+                f.write(ten_uid + '\n')
+            return ten_uid
+        else:
+            print('is double')
 
 
 class CombinationPrediction:
-    def __init__(self, path):
-        self.chainA_name, self.chainB_name = os.path.basename(path).split('-') if len(
-            os.path.basename(path).split('-')) == 2 else [None, None]
+    def __init__(self, path, **kwargs):
+        if not os.path.exists(path):
+            raise FileNotFoundError(f'The path {path} does not exist')
+        if '%' not in os.path.basename(path):
+            self.new_addition = True
+            self.uid = generate_uid(**kwargs)
+            os.rename(path, os.path.join(os.path.dirname(path), f'{self.uid}%{os.path.basename(path)}'))
+            path = os.path.join(os.path.dirname(path), f'{self.uid}%{os.path.basename(path)}')
+        elif len(os.path.basename(path).split('%')) > 2:
+            raise ValueError(f'The path {path} contains too many or too few "%" signs')
+        else:
+            self.new_addition = False
         self.path = path
+        self.uid, self.jobname = os.path.basename(path).split('%')
+        self.chainA_name, self.chainB_name = self.jobname.split('-') if len(
+            self.jobname.split('-')) == 2 else [None, None]
+        self.geneA = self.chainA_name.split('_')[0]
+        self.geneB = self.chainB_name.split('_')[0]
         with open(os.path.join(self.path, 'msas', 'chain_id_map.json')) as seq_map:
             seq_map_json = json.load(seq_map)
             self.seqA = seq_map_json["A"]["sequence"]
             self.seqB = seq_map_json["B"]["sequence"]
 
-    def process_docking(self):
+    def main(self, no_return=False):
         with open(os.path.join(self.path, 'ranking_debug.json')) as json_file:
             ranking_json = json.load(json_file)
 
         pdockq_scores = []
         model_ranks = []
         pdock_facs = []
-        for num, rank in enumerate(ranking_json['order']):
-            scores = compute_docking_quality(os.path.join(self.path, f'relaxed_{rank}.pdb'),
-                                             os.path.join(self.path, f'result_{rank}.pkl'))
-            pdockq_score = scores['pdockq']
-            pdockq_scores.append(pdockq_score)
-            model_rank = ranking_json['iptm+ptm'][rank]
-            model_ranks.append(model_rank)
-            pdock_fac = pdockq_score * model_rank
-            pdock_facs.append(pdock_fac)
 
-            if num == 0:
-                highest_rank_pdockq = pdockq_score
-                highest_iptm_score = scores['iptm']
-                highest_ptm_score = scores['ptm']
-                avg_plddt = scores['avg plddt']
+        rank = ranking_json['order'][0]
+
+        scores = compute_docking_quality(os.path.join(self.path, f'relaxed_{rank}.pdb'),
+                                         os.path.join(self.path, f'result_{rank}.pkl'))
+        pdockq_score = scores['pdockq']
+        pdockq_scores.append(pdockq_score)
+        model_rank = ranking_json['iptm+ptm'][rank]
+        model_ranks.append(model_rank)
+        pdock_fac = pdockq_score * model_rank
+        pdock_facs.append(pdock_fac)
+
+        highest_rank_pdockq = pdockq_score
+        highest_iptm_score = scores['iptm']
+        highest_ptm_score = scores['ptm']
+        avg_plddt = scores['avg plddt']
 
         average_pdockq = sum(pdockq_scores) / len(pdockq_scores)
         ranked_average = sum(pdock_facs) / sum(model_ranks)
@@ -71,13 +116,16 @@ class CombinationPrediction:
             plddt_path=os.path.join(self.path, f'result_{rank}.pkl'))
 
         dict_out = {
-            "Job name": os.path.basename(self.path),
+            "ID": self.uid,
+            "Job name": self.jobname,
             "Directory": self.path,
             "Chain A": self.chainA_name,
             "Chain B": self.chainB_name,
+            "Gene A": self.geneA,
+            "Gene B": self.geneB,
             "Max pDockQ": float(highest_rank_pdockq),
             "Avg pDockQ": float(average_pdockq),
-            "weighted pDockQ": float(ranked_average),
+            "Weighted pDockQ": float(ranked_average),
             "Max ipTM": float(highest_iptm_score),
             "Max pTM": float(highest_ptm_score),
             "Chain A sequence": self.seqA,
@@ -91,28 +139,33 @@ class CombinationPrediction:
 
         with open(os.path.join(self.path, 'docking_results.json'), 'w') as json_file:
             json.dump(dict_out, json_file, indent=4)
-        return {
-            "Job name": os.path.basename(self.path),
-            "Directory": self.path,
-            "Chain A": self.chainA_name,
-            "Chain B": self.chainB_name,
-            "Max pDockQ": highest_rank_pdockq,
-            "Avg pDockQ": average_pdockq,
-            "weighted pDockQ": ranked_average,
-            "Max ipTM": highest_iptm_score,
-            "Max pTM": highest_ptm_score,
-            "Chain A sequence": self.seqA,
-            "Chain A length": len(self.seqA),
-            "Chain B sequence": self.seqB,
-            "Chain B length": len(self.seqB),
-            "Average pLDDT": avg_plddt
-        }
+
+        if not no_return:
+            return {
+                "ID": self.uid,
+                "Job name": self.jobname,
+                "Directory": self.path,
+                "Chain A": self.chainA_name,
+                "Chain B": self.chainB_name,
+                "Gene A": self.geneA,
+                "Gene B": self.geneB,
+                "Max pDockQ": highest_rank_pdockq,
+                "Avg pDockQ": average_pdockq,
+                "Weighted pDockQ": ranked_average,
+                "Max ipTM": float(highest_iptm_score) if highest_iptm_score.shape == () else ValueError('No ipTM found'),
+                "Max pTM": float(highest_ptm_score) if highest_ptm_score.shape == () else ValueError('No pTM found'),
+                "Chain A sequence": self.seqA,
+                "Chain A length": len(self.seqA),
+                "Chain B sequence": self.seqB,
+                "Chain B length": len(self.seqB),
+                "Average pLDDT": avg_plddt,
+            }
 
 
 def helper_generate(path):
     try:
         exp = CombinationPrediction(path)
-        return exp.process_docking()
+        return exp.main()
     except FileNotFoundError as fileerr:
         print(f'The combination of the following sequences {os.path.basename(path)} have not been able to be processed'
               f' to the the following error')
@@ -121,6 +174,10 @@ def helper_generate(path):
         print(f'The combination of the following sequences {os.path.basename(path)} have not been able to be processed'
               f' to the the following error')
         print(pickleerr)
+    except Exception as err:
+        print(f'The combination of the following sequences {os.path.basename(path)} have not been able to be processed'
+              f' to the the following error')
+        print(err)
 
 
 def load_library_aslist(lib_path):
@@ -153,7 +210,7 @@ def uniquify(df):
     for chain in ['Chain A', 'Chain B']:
         candidate_set.update(df[chain].tolist())
 
-    unique_combinations = list(combinations(list(candidate_set), 2))
+    unique_combinations = list(combinations_with_replacement(list(candidate_set), 2))
     dict_list = []
     for chaina, chainb in unique_combinations:
         out_dict = {}
@@ -283,7 +340,7 @@ class Interactions:
         # self.unique_df.drop_duplicates(inplace=True, ignore_index=True)
 
         # Check if all possible combinations are present in unique_df
-        for x, y in combinations(gene_list, 2):
+        for x, y in combinations_with_replacement(gene_list, 2):
             present = False
             if ((self.unique_df['Gene A'] == x) & (self.unique_df['Gene B'] == y)).any():
                 continue
