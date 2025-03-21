@@ -384,6 +384,14 @@ def summarize_detailed_db(lib_path):
 
     cnx = sqlite3.connect(db_path)
 
+    # with cnx:
+    #     cur = cnx.cursor()
+    #     cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    #     tables = cur.fetchall()
+    #     if ('AF2DB_SUMMARY',) in tables:
+    #         cur.execute("DROP TABLE AF2DB_SUMMARY")
+    #         cnx.commit()
+
     with cnx:
         # Connect to the database
         cur = cnx.cursor()
@@ -409,6 +417,7 @@ def summarize_detailed_db(lib_path):
                 "SELECT * FROM AF2DB_DETAILED WHERE (ChainA = ? AND ChainB = ?) OR (ChainA = ? AND ChainB = ?)", cnx,
                 params=(comb[0], comb[1], comb[1], comb[0]))
         if not len(df_comb) == 0:
+            # print(f'{comb[0]}-{comb[1]}')
             data = {
                 "ChainA": comb[0],
                 "ChainB": comb[1],

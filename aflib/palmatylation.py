@@ -306,6 +306,8 @@ def searchengine_master(candidate_list, canonical):
                     clean_candidate_list.append(ses_result)
                 elif ses_result is not None and not canonical:
                     clean_candidate_list.append(ses_result)
+                else:
+                    print(f'No Gene named <{ses_result}> was found in the canonical list. Please add yourself via palmatyalation.generate_pair()')
 
     return clean_candidate_list
 
@@ -586,6 +588,7 @@ def some_vs_some(output_directory: str, genes_group1: list, genes_group2: list, 
     """
     clean_gene_group1 = searchengine_master(genes_group1, only_canonical)
     clean_gene_group2 = searchengine_master(genes_group2, only_canonical)
+    print(clean_gene_group1, clean_gene_group2)
 
     if db_path is not None:
         if db_path.endswith('.db'):
